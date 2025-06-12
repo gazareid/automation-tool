@@ -1,0 +1,23 @@
+# Compiled executables
+*.exe
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log
+
+# IDE specific files
+.vscode/
+.idea/
+
+# Windows specific
+Thumbs.db
+Desktop.ini
+
+# Build artifacts
+*.zip
+
+# Environment files
+.env 
