@@ -20,4 +20,9 @@ Desktop.ini
 *.zip
 
 # Environment files
-.env 
+.env
+
+# Sensitive data files
+flows.json
+workflows.json
+image_details.json 

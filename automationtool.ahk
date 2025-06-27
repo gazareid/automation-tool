@@ -13,9 +13,6 @@ global g_StepRecFlowFilter := ""  ; Store the current step recorder flow filter 
 ; Import path utility functions
 #Include path_utils.ahk
 
-; import workflow orchestration functions
-#Include workflow_orchestration.ahk
-
 ; import core functions
 #Include core_functions.ahk
 
@@ -29,7 +26,7 @@ global g_StepRecFlowFilter := ""  ; Store the current step recorder flow filter 
 #Include action_recorder.ahk
 
 ; Set a custom tray icon
-TraySetIcon("images/automationtoolcropped.ico")
+TraySetIcon("assets/automationtoolcropped.ico")
 
 ;------------------------------------------------------------------------------
 ; SCRIPT INITIALIZATION
@@ -57,10 +54,6 @@ global g_SaveComplete := false
 global g_SaveStartTime := 0
 global g_SaveButton := ""  ; Global reference to save button
 global g_SelectedStepIndex := 0  ; Index of the selected step in the steps list
-global g_Workflows := Map()      ; A Map object to store all workflows (sequences of flows)
-global g_CurrentWorkflow := []   ; An Array to store flows of the workflow being edited
-global g_CurrentWorkflowName := "" ; Name of the current workflow being edited
-global g_WorkflowsFilePath := CombinePath(g_WorkingDir, "workflows.json") ; Path where workflows are saved
 global g_KeyPressDelay := 5      ; Default key press delay in milliseconds
 global g_CaptureDelay := 1000    ; Default capture delay in milliseconds
 global g_ImageSearchAttempts := 3 ; Number of attempts for image search before failing
@@ -102,54 +95,12 @@ ShowHotkeysGui() {
     refreshBtn.OnEvent("Click", (*) => Reload())  ; Reload the script when clicked
 
     ; Create a tab control to organize the interface - making it taller to maximize space
-    tabs := myGui.AddTab3("x10 y10 w580 h570 vMainTabs", ["Workflows", "Flows", "Steps", "Step Details", "Settings", "Flow Rec", "Step Rec"])
-
-    ;-----------------------
-    ; WORKFLOW ORCHESTRATION TAB
-    ;-----------------------
-    tabs.UseTab(1)
-    myGui.SetFont("s12 bold c0066CC")  ; Blue, bold font for section headers
-    myGui.AddText("x20 y40 w540", "Create and Manage Workflows")
-    myGui.SetFont("s10 norm")
-    
-    ; Workflow name input - with more space and clearer layout
-    myGui.AddText("x20 y+15", "Workflow Name:")
-    myGui.AddEdit("x120 y+0 w400 vWorkflowNameInput", g_CurrentWorkflowName)
-    myGui.AddText("x20 y+5 w500 vWorkflowSavedAtText", "")  ; Text to show "saved at" message
-
-    ; Workflow operation buttons - better aligned and spaced
-    myGui.AddButton("x20 y+15 w100 h30", "New").OnEvent("Click", NewWorkflow)
-    myGui.AddButton("x+20 w100 h30", "Save").OnEvent("Click", SaveCurrentWorkflow)
-    myGui.AddButton("x+20 w100 h30", "Run").OnEvent("Click", RunWorkflow)
-
-    ; Workflow list - shows all saved workflows with expand/collapse capability
-    myGui.SetFont("s11 bold")
-    myGui.AddText("x20 y+20", "Saved Workflows:")
-    myGui.SetFont("s10 norm")
-    myGui.AddListView("x20 y+5 w540 h150 -Multi +Grid vWorkflowsList", ["Workflow Name", "# of Flows", "Description"])
-    myGui["WorkflowsList"].ModifyCol(1, 250)  ; Workflow name column
-    myGui["WorkflowsList"].ModifyCol(2, 90)   ; Flow count column
-    myGui["WorkflowsList"].ModifyCol(3, 200)  ; Description column
-    myGui["WorkflowsList"].OnEvent("ItemSelect", SelectWorkflow)  ; Selection handler
-
-    ; Add a section for managing flows in the selected workflow
-    myGui.SetFont("s11 bold")
-    myGui.AddText("x20 y+15", "Flows in Selected Workflow:")
-    myGui.SetFont("s10 norm")
-    myGui.AddListView("x20 y+5 w430 h150 -Multi +Grid vWorkflowFlowsList", ["Flow Name", "Order"])
-    myGui["WorkflowFlowsList"].ModifyCol(1, 330)  ; Flow name column
-    myGui["WorkflowFlowsList"].ModifyCol(2, 100)  ; Order column
-
-    ; Add buttons to manipulate flows in the workflow - vertically aligned for better organization
-    myGui.AddButton("x+10 y-150 w100 h30", "Add Flow").OnEvent("Click", AddFlowToWorkflow)
-    myGui.AddButton("x+10 y+10 w100 h30", "Remove").OnEvent("Click", RemoveFlowFromWorkflow)
-    myGui.AddButton("x+10 y+10 w100 h30", "Move Up").OnEvent("Click", MoveFlowUp)
-    myGui.AddButton("x+10 y+10 w100 h30", "Move Down").OnEvent("Click", MoveFlowDown)
+    tabs := myGui.AddTab3("x10 y10 w580 h570 vMainTabs", ["Flows", "Steps", "Step Details", "Flow Rec", "Step Rec", "Settings"])
 
     ;-----------------------
     ; FLOW MANAGEMENT TAB
     ;-----------------------
-    tabs.UseTab(2)
+    tabs.UseTab(1)
     myGui.SetFont("s12 bold c0066CC")  ; Blue, bold font for section headers
     myGui.AddText("x20 y40 w540", "Create and Manage Flows")
     myGui.SetFont("s10 norm")
@@ -157,21 +108,20 @@ ShowHotkeysGui() {
     ; Flow name input - with more space and clearer layout, on one line
     myGui.AddText("x20 y+10 w80", "Flow Name:")
     myGui.AddEdit("x105 yp w320 vFlowNameInput", g_CurrentFlowName)
-    myGui.AddText("x20 y+2 w500 vSavedAtText", "")  ; Text to show "saved at" message
+    myGui.AddPicture("x345 y+5 w16 h16", "assets/new_flow.png").OnEvent("Click", NewFlow)
+    myGui.AddPicture("x+5 yp w16 h16", "assets/save_flow.png").OnEvent("Click", SaveCurrentFlow)
+    myGui.AddPicture("x+5 yp w16 h16", "assets/run_flow.png").OnEvent("Click", RunFlow)
+    myGui.AddPicture("x+5 yp w16 h16", "assets/delete_flow.png").OnEvent("Click", DeleteFlow)
+    myGui.AddText("x20 y+10 w500 vSavedAtText", "")  ; Text to show "saved at" message
 
-    ; Flow operation buttons - better aligned and side-by-side
-    myGui.AddButton("x20 y+5 w100 h28", "New").OnEvent("Click", NewFlow)
-    myGui.AddButton("x+10 w100 h28 vSaveButton", "Save").OnEvent("Click", SaveCurrentFlow)
-    myGui.AddButton("x+10 w100 h28", "Run").OnEvent("Click", RunFlow)
-    myGui.AddButton("x+10 w100 h28", "Delete").OnEvent("Click", DeleteFlow)
-
+    myGui.AddButton("x+200 w100 h28 vSaveButton", "Save").OnEvent("Click", SaveCurrentFlow)
     ; Flow list - shows all saved flows with 5 rows
     myGui.SetFont("s10 bold")
     myGui.AddText("x20 y+5", "Saved Flows:")
     myGui.SetFont("s10 norm")
     ; Add filter text field
     myGui.AddText("x20 y+5 w60", "Filter:")
-    myGui.AddEdit("x85 yp w475 vFlowFilterInput", g_FlowFilter).OnEvent("Change", FilterFlows)
+    myGui.AddEdit("x85 yp w200 vFlowFilterInput", g_FlowFilter).OnEvent("Change", FilterFlows)
     myGui.AddListView("x20 y+5 w540 h340 -Multi +Grid vFlowsList", ["Flow Name"])
     myGui["FlowsList"].ModifyCol(1, 540)  ; Auto-size to fill width
     myGui["FlowsList"].OnEvent("ItemSelect", SelectFlow)  ; Selection handler
@@ -179,7 +129,7 @@ ShowHotkeysGui() {
     ;-----------------------
     ; STEPS TAB (NEW)
     ;-----------------------
-    tabs.UseTab(3)
+    tabs.UseTab(2)
     myGui.SetFont("s10 bold")
     myGui.AddText("x20 y+5", "Selected Flow:")
     myGui.SetFont("s10 norm")
@@ -187,15 +137,15 @@ ShowHotkeysGui() {
     myGui.SetFont("s10 bold")
     myGui.AddText("x20 y+15", "Steps in Flow:")
     myGui.SetFont("s10 norm")
-    myGui.AddListView("x20 y+5 w540 h300 -Multi +Grid +LV0x1000 vStepsList", ["#", "Name", "Description", "Image Path", "Click Pos", "Action", "Wait", "Text"])
+    myGui.AddListView("x20 y+5 w540 h300 -Multi +Grid +LV0x1000 vStepsList", ["#", "Name", "Step Type", "Click Type", "Click Pos", "Action", "Wait", "Sub Steps"])
     myGui["StepsList"].ModifyCol(1, 30)   ; # column
     myGui["StepsList"].ModifyCol(2, 100)  ; Name
-    myGui["StepsList"].ModifyCol(3, 120)  ; Description
-    myGui["StepsList"].ModifyCol(4, 120)  ; Image Path
-    myGui["StepsList"].ModifyCol(5, 60)   ; Click Position
-    myGui["StepsList"].ModifyCol(6, 60)   ; Action
+    myGui["StepsList"].ModifyCol(3, 70)   ; Step Type
+    myGui["StepsList"].ModifyCol(4, 70)   ; Click Type
+    myGui["StepsList"].ModifyCol(5, 65)   ; Click Position
+    myGui["StepsList"].ModifyCol(6, 50)   ; Action
     myGui["StepsList"].ModifyCol(7, 40)   ; Wait time
-    myGui["StepsList"].ModifyCol(8, 70)   ; Text
+    myGui["StepsList"].ModifyCol(8, 400)   ; Sub Steps
     myGui["StepsList"].OnEvent("ItemSelect", SelectStep)  ; Add selection handler for steps
 
     ; Step operation buttons - moved from Step Details tab
@@ -209,7 +159,7 @@ ShowHotkeysGui() {
     ;-----------------------
     ; STEP DETAILS TAB (NEW)
     ;-----------------------
-    tabs.UseTab(4)
+    tabs.UseTab(3)
     myGui.SetFont("s10 bold")
     myGui.AddText("x20 y+5", "Selected Step:")
     myGui.SetFont("s10 norm")
@@ -217,7 +167,7 @@ ShowHotkeysGui() {
     myGui.SetFont("s10 bold")
     myGui.AddText("x20 y+15", "Step Configuration:")
     myGui.SetFont("s10 norm")
-    myGui.AddButton("x+340 yp w100 h28 vUpdateStepButton", "update step").OnEvent("Click", SaveCurrentFlow)
+    myGui.AddButton("x+340 yp w100 h28 vUpdateStepButton", "Save Step").OnEvent("Click", SaveCurrentFlow)
 
     ; First row: Step name and description side by side
     stepNameText := myGui.AddText("x20 y+5 w80", "Step Name:")
@@ -226,32 +176,40 @@ ShowHotkeysGui() {
     myGui.AddText("x300 yp w80", "Description:")
     myGui.AddEdit("x385 yp w150 vStepDescriptionInput")
 
-    ; Second row: Click type selection
-    myGui.AddText("x20 y+5 w80", "Click On:")
-    myGui.AddDropDownList("x105 yp w120 vClickTypeInput", ["Image", "X & Y"]).OnEvent("Change", UpdateClickTypeUI)
+    ; Second row: Step type and click type selection
+    myGui.AddText("x20 y+5 w80", "Step Type:")
+    myGui.AddDropDownList("x105 yp w120 vStepTypeInput", ["Step", "Flow"]).OnEvent("Change", UpdateStepTypeUI)
+    myGui["StepTypeInput"].Choose(1)  ; Default to "Step"
+    
+    myGui.AddText("x240 yp w80 vClickTypeLabel", "Click On:")
+    myGui.AddDropDownList("x325 yp w120 vClickTypeInput", ["Image", "X & Y"]).OnEvent("Change", UpdateClickTypeUI)
     myGui["ClickTypeInput"].Choose(1)  ; Default to "Image"
 
-    ; Third row: Image path with browse button (shown/hidden based on click type)
+    ; Third row: Target flow selection (shown/hidden based on step type)
+    myGui.AddText("x20 y+5 w80 vTargetFlowLabel Hidden", "Target Flow:")
+    myGui.AddDropDownList("x105 yp w350 vTargetFlowInput Hidden")
+
+    ; Fourth row: Image path with browse button (shown/hidden based on click type)
     myGui.AddText("x20 y+5 w80 vImagePathLabel", "Image Path:")
     myGui.AddEdit("x105 yp w350 vImagePathInput")
     myGui.AddButton("x465 yp w80 h24 vBrowseButton", "Browse").OnEvent("Click", BrowseForImage)
 
-    ; Fourth row: Wait time, Click position (shown/hidden based on click type)
+    ; Fifth row: Wait time, Click position (shown/hidden based on click type)
     myGui.AddText("x20 y+5 w80 vWaitTimeLabel", "Wait Time (ms):")
     myGui.AddEdit("x105 yp w80 vWaitTimeInput", "0")
     myGui.AddText("x200 yp w80 vClickPositionLabel", "Click Position:")
     myGui.AddDropDownList("x290 yp w90 Choose1 vClickPositionInput", ["center", "upper left", "upper right", "lower left", "lower right"])
-    myGui.AddText("x390 yp w80", "Action Type:")
-    myGui.AddDropDownList("x475 yp w70 Choose1 vActionTypeInput", ["click", "hover"])
+    myGui.AddText("x390 yp w80 vActionTypeLabel", "Action Type:")
+    myGui.AddDropDownList("x475 yp w70 Choose1 vActionTypeInput", ["click", "doubleClick", "hover"])
 
-    ; Fifth row: X & Y coordinates (shown/hidden based on click type)
+    ; Sixth row: X & Y coordinates (shown/hidden based on click type)
     myGui.AddText("x20 y+5 w80 vXCoordLabel Hidden", "X Coordinate:")
     myGui.AddEdit("x105 yp w80 vXCoordInput", "0")
     myGui.AddText("x200 yp w80 vYCoordLabel Hidden", "Y Coordinate:")
     myGui.AddEdit("x290 yp w80 vYCoordInput", "0")
 
-    ; Sixth row: Sub Steps section
-    myGui.AddText("x20 y+15 w80", "Sub Steps:")
+    ; Seventh row: Sub Steps section
+    myGui.AddText("x20 y+15 w80 vSubStepsLabel", "Sub Steps:")
     myGui.AddListView("x20 y+5 w350 h150 -Multi +Grid vSubStepsList", ["#", "Type", "Value"])
     myGui["SubStepsList"].ModifyCol(1, 30)
     myGui["SubStepsList"].ModifyCol(2, 80)
@@ -260,30 +218,33 @@ ShowHotkeysGui() {
     ; Controls to add a sub step
     myGui.AddDropDownList("x20 y+5 w80 vSubStepTypeInput", ["text", "key", "scroll"])
     myGui.AddEdit("x+5 yp w150 vSubStepValueInput")
-    myGui.AddButton("x+5 yp w60 h24", "Add").OnEvent("Click", AddSubStep)
-    myGui.AddButton("x+5 yp w60 h24", "Remove").OnEvent("Click", RemoveSubStep)
-    myGui.AddButton("x+5 yp w60 h24", "Up").OnEvent("Click", MoveSubStepUp)
-    myGui.AddButton("x+5 yp w60 h24", "Down").OnEvent("Click", MoveSubStepDown)
+    myGui.AddButton("x+5 yp w60 h24 vAddSubStepButton", "Add").OnEvent("Click", AddSubStep)
+    myGui.AddButton("x+5 yp w60 h24 vRemoveSubStepButton", "Remove").OnEvent("Click", RemoveSubStep)
+    myGui.AddButton("x+5 yp w60 h24 vMoveSubStepUpButton", "Up").OnEvent("Click", MoveSubStepUp)
+    myGui.AddButton("x+5 yp w60 h24 vMoveSubStepDownButton", "Down").OnEvent("Click", MoveSubStepDown)
     ; Key options
     myGui.SetFont("s8 norm")
-    myGui.AddText("x20 y+5 w500", "Allowed keys: Tab, Enter, Esc, Space, Backspace, Delete, arrows, Home,End, PgUp, PgDn, or Ctrl/Alt/Shift+<key>. For scroll type, use 'up' or 'down'.")
+    myGui.AddText("x20 y+5 w500 vSubStepHelpText", "Allowed keys: Tab, Enter, Esc, Space, Backspace, Delete, arrows, Home,End, PgUp, PgDn, or Ctrl/Alt/Shift+<key>. For scroll type, use 'up' or 'down'.")
     myGui.SetFont("s10 norm")
 
-    ; Add image preview section at the bottom (shown/hidden based on click type)
-    myGui.SetFont("s10 bold")
-    myGui.AddText("x20 y+5 vImagePreviewLabel", "Image Preview:")
-    myGui.SetFont("s10 norm")
+    ; Move image preview to the right of Sub Steps
+    myGui.AddText("x390 y295 vImagePreviewLabel", "Image Preview:")
     try {
-        myGui.AddPicture("x20 y+5 Border vImagePreview", "HICON:0")  ; Use border to make images visible
-        SendMessage(0x5001, 0, 0xE0E0E0, myGui["ImagePreview"].Hwnd)  ; WM_CTLCOLORDLG trick
+        myGui.AddPicture("x390 y+5 w180 h150 Border vImagePreview", "HICON:0")
+        SendMessage(0x5001, 0, 0xE0E0E0, myGui["ImagePreview"].Hwnd)
     } catch as err {
-        myGui.AddPicture("x20 y+5 Border vImagePreview")
+        myGui.AddPicture("x390 y+5 w180 h150 Border vImagePreview")
     }
+
+    ; Create the Flow Recorder tab (should be the 5th tab)
+    CreateFlowRecorderTab(tabs)
+    ; Create the Step Recorder tab (should be the 6th tab)
+    CreateStepRecorderTab(tabs)
 
     ;-----------------------
     ; SETTINGS TAB
     ;-----------------------
-    tabs.UseTab(5)
+    tabs.UseTab(6)
     myGui.SetFont("s12 bold c0066CC")
     myGui.AddText("x20 y80 w540", "Application Settings")
     myGui.SetFont("s10 norm")
@@ -295,8 +256,15 @@ ShowHotkeysGui() {
     
     ; Add some general settings options
     myGui.AddCheckBox("x20 y+15 w400 vAutoStartCheck", "Auto-start on Windows login")
-    myGui.AddCheckBox("x20 y+10 w400 vShowNotificationsCheck", "Show notifications during workflow execution")
-    myGui.AddCheckBox("x20 y+10 w400 vConfirmRunCheck", "Confirm before running workflows")
+    myGui.AddCheckBox("x20 y+10 w400 vShowNotificationsCheck", "Show notifications during flow execution")
+    myGui.AddCheckBox("x20 y+10 w400 vConfirmRunCheck", "Confirm before running flows")
+    myGui.AddCheckBox("x20 y+10 w400 vAutoCleanupImagesCheck", "Auto-cleanup unused images on startup")
+    
+    ; Initialize checkbox values with current settings
+    myGui["AutoStartCheck"].Value := GetSetting("AutoStart")
+    myGui["ShowNotificationsCheck"].Value := GetSetting("ShowNotifications")
+    myGui["ConfirmRunCheck"].Value := GetSetting("ConfirmRun")
+    myGui["AutoCleanupImagesCheck"].Value := GetSetting("AutoCleanupImages")
     
     ; Image capture settings
     myGui.SetFont("s11 bold")
@@ -322,17 +290,18 @@ ShowHotkeysGui() {
     myGui.AddButton("x20 y+30 w100 h30", "Save Settings").OnEvent("Click", SaveSettingsFromGui)
     myGui.AddButton("x+20 w100 h30", "Reset to Defaults").OnEvent("Click", ResetSettingsFromGui)
 
-    ; Create the Flow Recorder tab (should be the 6th tab)
-    CreateFlowRecorderTab(tabs)
-    ; Create the Step Recorder tab (should be the 7th tab)
-    CreateStepRecorderTab(tabs)
-
-    ; Load existing flows and workflows from file
+    ; Load existing flows from file
     LoadFlowsFromFile()
     StepRec_UpdateFlowsDropdown()
     UpdateFlowList()
-    LoadWorkflowsFromFile()
-    UpdateWorkflowsList()
+
+    ; Run cleanup if enabled
+    if (GetSetting("AutoCleanupImages")) {
+        deletedCount := CleanupUnusedImages()
+        if (deletedCount > 0) {
+            OutputDebug("[Startup] Cleaned up " deletedCount " unused images")
+        }
+    }
 
     ; Show the GUI with a default size but allow resizing
     tabs.UseTab()  ; Reset tab focus
@@ -425,7 +394,7 @@ GuiResize(thisGui, minMax, width, height) {
     newWidth := width - 60  ; 30px margins on each side
     
     ; Resize list views and their columns
-    for _, controlName in ["WorkflowsList", "WorkflowFlowsList", "FlowsList", "StepsList", "RecordedStepsList"] {
+    for _, controlName in ["FlowsList", "StepsList", "RecordedStepsList"] {
         if thisGui.HasProp(controlName) {
             ; Adjust width only - don't change Y position because of tab control
             thisGui[controlName].GetPos(&ctrlX, &ctrlY, &ctrlWidth)
@@ -434,15 +403,6 @@ GuiResize(thisGui, minMax, width, height) {
             ; Adjust column widths for each list
             if (controlName = "FlowsList") {
                 thisGui[controlName].ModifyCol(1, newWidth) ; Just one column
-            } else if (controlName = "WorkflowsList") {
-                thisGui[controlName].ModifyCol(1, Ceil(newWidth * 0.46)) ; Name column
-                thisGui[controlName].ModifyCol(2, Ceil(newWidth * 0.16)) ; Flow count column
-                thisGui[controlName].ModifyCol(3, Ceil(newWidth * 0.38)) ; Description column
-            } else if (controlName = "WorkflowFlowsList") {
-                flowListWidth := newWidth - 110 ; Leave space for buttons
-                thisGui[controlName].Move(, , flowListWidth)
-                thisGui[controlName].ModifyCol(1, Ceil(flowListWidth * 0.75)) ; Flow name column
-                thisGui[controlName].ModifyCol(2, Ceil(flowListWidth * 0.25)) ; Order column
             } else if (controlName = "StepsList") {
                 thisGui[controlName].ModifyCol(1, 30)   ; ID column is fixed
                 thisGui[controlName].ModifyCol(2, Ceil(newWidth * 0.15))  ; Name
@@ -465,7 +425,7 @@ GuiResize(thisGui, minMax, width, height) {
     
     ; These fields should all be resized proportionally
     for _, controlName in ["StepNameInput", "StepDescriptionInput", "TextToSendInput", 
-                          "FlowNameInput", "WorkflowNameInput"] {
+                          "FlowNameInput"] {
         if thisGui.HasProp(controlName) {
             thisGui[controlName].GetPos(&ctrlX, &ctrlY, &ctrlWidth)
             thisGui[controlName].Move(, , inputWidth)
@@ -642,6 +602,7 @@ SaveSettingsFromGui(*) {
     UpdateSetting("AutoStart", myGui["AutoStartCheck"].Value)
     UpdateSetting("ShowNotifications", myGui["ShowNotificationsCheck"].Value)
     UpdateSetting("ConfirmRun", myGui["ConfirmRunCheck"].Value)
+    UpdateSetting("AutoCleanupImages", myGui["AutoCleanupImagesCheck"].Value)
     UpdateSetting("DefaultImageFolder", myGui["DefaultImageFolder"].Value)
     UpdateSetting("CaptureDelay", myGui["CaptureDelay"].Value)
     UpdateSetting("KeyPressDelay", myGui["KeyPressDelay"].Value)
@@ -663,6 +624,7 @@ ResetSettingsFromGui(*) {
             myGui["AutoStartCheck"].Value := GetSetting("AutoStart")
             myGui["ShowNotificationsCheck"].Value := GetSetting("ShowNotifications")
             myGui["ConfirmRunCheck"].Value := GetSetting("ConfirmRun")
+            myGui["AutoCleanupImagesCheck"].Value := GetSetting("AutoCleanupImages")
             myGui["DefaultImageFolder"].Value := GetSetting("DefaultImageFolder")
             myGui["CaptureDelay"].Value := GetSetting("CaptureDelay")
             myGui["KeyPressDelay"].Value := GetSetting("KeyPressDelay")

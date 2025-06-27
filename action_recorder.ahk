@@ -588,7 +588,7 @@ HandleInteractiveClick(sender, info) {
 CreateFlowRecorderTab(tabs) {
     global g_RecordingStatusText
     ; Switch to the Flow Recorder tab (6th tab)
-    tabs.UseTab(6)
+    tabs.UseTab(4)
     ; Add header
     myGui.SetFont("s12 bold c0066CC")
     myGui.AddText("x20 y40 w540", "Flow Recorder")
@@ -630,7 +630,7 @@ CreateFlowRecorderTab(tabs) {
 ; Creates the Step Recorder tab in the GUI (full implementation)
 CreateStepRecorderTab(tabs) {
     global g_StepRec_ImagePath, g_StepRec_ImagePreview, g_StepRec_SelectedFlow, g_StepRec_StepType, g_StepRec_FlowsDropdown, g_StepRec_ClickType
-    tabs.UseTab(7)
+    tabs.UseTab(5)
     myGui.SetFont("s12 bold c0066CC")
     myGui.AddText("x20 y40 w540", "Step Recorder")
     myGui.SetFont("s10 norm")

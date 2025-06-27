@@ -15,8 +15,10 @@
 ;   clickType: 'image' or 'coordinates' (default 'image')
 ;   clickX: X coordinate for coordinate-based clicking (optional)
 ;   clickY: Y coordinate for coordinate-based clicking (optional)
+;   stepType: 'step' or 'flow' (default 'step')
+;   targetFlow: Name of the flow to execute when stepType is 'flow' (optional)
 ; Returns: A Map object representing the step
-CreateFlowStep(imagePath, waitTime := 0, subSteps := [], clickPosition := "center", name := "", description := "", actionType := "click", clickType := "image", clickX := 0, clickY := 0) {
+CreateFlowStep(imagePath, waitTime := 0, subSteps := [], clickPosition := "center", name := "", description := "", actionType := "click", clickType := "image", clickX := 0, clickY := 0, stepType := "step", targetFlow := "") {
     ; Ensure consistent path formatting for storage
     imagePath := StandardizeImagePath(imagePath)
     
@@ -30,7 +32,9 @@ CreateFlowStep(imagePath, waitTime := 0, subSteps := [], clickPosition := "cente
         "actionType", actionType,
         "clickType", clickType,
         "clickX", clickX,
-        "clickY", clickY
+        "clickY", clickY,
+        "stepType", stepType,
+        "targetFlow", targetFlow
     )
 }
 
@@ -57,33 +61,44 @@ SaveCurrentFlow(*) {
         clickType := myGui["ClickTypeInput"].Text
         clickX := myGui["XCoordInput"].Value
         clickY := myGui["YCoordInput"].Value
+        stepType := myGui["StepTypeInput"].Text
+        targetFlow := myGui["TargetFlowInput"].Text
         ; Use g_EditingSubSteps for subSteps
         subSteps := g_EditingSubSteps.Clone()
         
-        ; Validate based on click type
-        if (clickType = "Image") {
-            ; Validate image path (required field for image-based clicking)
-            if (imagePath = "") {
-                MsgBox "Image path is required for image-based clicking.", "Input Error", "Icon!"
-                return
+        ; Validate based on step type
+        if (stepType = "Step") {
+            ; Validate based on click type
+            if (clickType = "Image") {
+                ; Validate image path (required field for image-based clicking)
+                if (imagePath = "") {
+                    MsgBox "Image path is required for image-based clicking.", "Input Error", "Icon!"
+                    return
+                }
+            } else {
+                ; Validate coordinates for coordinate-based clicking
+                if (clickX = "" || clickY = "") {
+                    MsgBox "Both X and Y coordinates are required for coordinate-based clicking.", "Input Error", "Icon!"
+                    return
+                }
+                ; Convert coordinates to numbers and validate
+                try {
+                    clickX := Integer(clickX)
+                    clickY := Integer(clickY)
+                } catch as err {
+                    MsgBox "X and Y coordinates must be valid numbers.", "Input Error", "Icon!"
+                    return
+                }
             }
-        } else {
-            ; Validate coordinates for coordinate-based clicking
-            if (clickX = "" || clickY = "") {
-                MsgBox "Both X and Y coordinates are required for coordinate-based clicking.", "Input Error", "Icon!"
-                return
-            }
-            ; Convert coordinates to numbers and validate
-            try {
-                clickX := Integer(clickX)
-                clickY := Integer(clickY)
-            } catch as err {
-                MsgBox "X and Y coordinates must be valid numbers.", "Input Error", "Icon!"
+        } else if (stepType = "Flow") {
+            ; Validate target flow is selected
+            if (targetFlow = "") {
+                MsgBox "Please select a target flow to execute.", "Input Error", "Icon!"
                 return
             }
         }
         
-        g_CurrentFlow[g_SelectedStepIndex] := CreateFlowStep(imagePath, waitTime, subSteps, clickPosition, stepName, description, actionType, clickType, clickX, clickY)
+        g_CurrentFlow[g_SelectedStepIndex] := CreateFlowStep(imagePath, waitTime, subSteps, clickPosition, stepName, description, actionType, clickType, clickX, clickY, stepType, targetFlow)
         UpdateStepsList()
         myGui["SavedAtText"].Text := "Step updated at " . FormatTime(, "HH:mm:ss")
     }
@@ -181,7 +196,9 @@ SaveFlowsToFile() {
                     "actionType", step["actionType"],
                     "clickType", step.Has("clickType") ? step["clickType"] : "Image",
                     "clickX", step.Has("clickX") ? step["clickX"] : 0,
-                    "clickY", step.Has("clickY") ? step["clickY"] : 0
+                    "clickY", step.Has("clickY") ? step["clickY"] : 0,
+                    "stepType", step.Has("stepType") ? step["stepType"] : "Step",
+                    "targetFlow", step.Has("targetFlow") ? step["targetFlow"] : ""
                 )
                 
                 ; The path is already standardized by BrowseForImage, no need to modify it here
@@ -272,8 +289,13 @@ LoadFlowsFromFile() {
                     name := step.Has("name") ? step["name"] : ""
                     description := step.Has("description") ? step["description"] : ""
                     actionType := step["actionType"]
+                    stepType := step.Has("stepType") ? step["stepType"] : "Step"
+                    targetFlow := step.Has("targetFlow") ? step["targetFlow"] : ""
                     
-                    stepArray.Push(CreateFlowStep(imagePath, waitTime, subSteps, clickPosition, name, description, actionType))
+                    clickType := step.Has("clickType") ? step["clickType"] : "Image"
+                    clickX := step.Has("clickX") ? step["clickX"] : 0
+                    clickY := step.Has("clickY") ? step["clickY"] : 0
+                    stepArray.Push(CreateFlowStep(imagePath, waitTime, subSteps, clickPosition, name, description, actionType, clickType, clickX, clickY, stepType, targetFlow))
                     OutputDebug("Added step " i " with image: " imagePath)
                 }
             } else {
@@ -317,6 +339,11 @@ UpdateFlowList() {
             myGui["FlowsList"].Add(, flowName)
         }
     }
+    
+    ; Update target flow dropdown if it exists and is visible
+    if (myGui.HasProp("TargetFlowInput") && myGui["TargetFlowInput"].Visible) {
+        UpdateTargetFlowDropdown()
+    }
 }
 
 ; Filter the flows list based on the filter text
@@ -329,38 +356,53 @@ FilterFlows(*) {
 ; Adds a step to the current flow based on GUI inputs
 ; Triggered by the Add Step button
 AddFlowStep(*) {
-    global g_CurrentFlow
+    global g_CurrentFlow, g_CurrentFlowName
     
-    ; Get values from the GUI inputs
-    stepName := myGui["StepNameInput"].Value
-    description := myGui["StepDescriptionInput"].Value
-    imagePath := myGui["ImagePathInput"].Value
-    waitTime := myGui["WaitTimeInput"].Value
-    clickPosition := myGui["ClickPositionInput"].Text
-    actionType := myGui.HasProp("ActionTypeInput") ? myGui["ActionTypeInput"].Text : "click"
-    
-    ; Validate image path (required field)
-    if (imagePath = "") {
-        MsgBox "Image path is required.", "Input Error", "Icon!"
+    ; Check if a flow is selected - check both global variable and GUI state
+    selectedFlowText := myGui["SelectedFlowText"].Text
+    if (g_CurrentFlowName = "" && selectedFlowText = "") {
+        MsgBox "Please select a flow first.", "No Flow Selected", "Icon!"
         return
     }
     
-    ; Create and add the step to the current flow
-    step := CreateFlowStep(imagePath, waitTime, g_EditingSubSteps.Clone(), clickPosition, stepName, description, actionType)
+    ; Use the flow name from GUI if global variable is empty
+    if (g_CurrentFlowName = "" && selectedFlowText != "") {
+        g_CurrentFlowName := selectedFlowText
+        ; Also make sure the flow is loaded
+        if (g_Flows.Has(g_CurrentFlowName)) {
+            g_CurrentFlow := g_Flows[g_CurrentFlowName].Clone()
+        }
+    }
+    
+    ; Final check to ensure we have a valid flow
+    if (g_CurrentFlowName = "" || !g_Flows.Has(g_CurrentFlowName)) {
+        MsgBox "Please select a valid flow first.", "No Flow Selected", "Icon!"
+        return
+    }
+    
+    ; Prompt for step name using InputBox
+    input := InputBox("Enter a name for the new step:", "Add Step", "w400 h120")
+    if (input.Result = "Cancel" || input.Value = "") {
+        return  ; User cancelled or entered nothing
+    }
+    stepName := input.Value
+    
+    ; Create a blank step with default values
+    step := CreateFlowStep("", 0, [], "center", stepName, "", "click", "image", 0, 0, "step", "")
     g_CurrentFlow.Push(step)
     
     ; Update the steps list in the GUI
     UpdateStepsList()
     
-    ; Clear the inputs for the next step
-    myGui["StepNameInput"].Value := ""
-    myGui["StepDescriptionInput"].Value := ""
-    myGui["ImagePathInput"].Value := ""
-    myGui["WaitTimeInput"].Value := "0"
-    myGui["ClickPositionInput"].Choose(1)  ; Reset to "center"
-    if myGui.HasProp("ActionTypeInput")
-        myGui["ActionTypeInput"].Choose(1)
+    ; Select the newly created step
+    newStepIndex := g_CurrentFlow.Length
+    myGui["StepsList"].Modify(newStepIndex, "Select Focus")
+    
+    ; Save the flow
     SaveCurrentFlow()
+    
+    ; Show a message to guide the user
+    MsgBox "Step '" stepName "' has been created.`n`nSwitch to the 'Step Details' tab to configure it.", "Step Created", "Icon!"
 }
 
 ; Updates the list of steps displayed in the GUI for the current flow
@@ -378,7 +420,17 @@ UpdateStepsList() {
                 subStepsSummary := SubStr(subStepsSummary, 1, -2) ; Remove trailing semicolon and space
         }
         actionType := step.Has("actionType") ? step["actionType"] : "click"
-        myGui["StepsList"].Add(, i, step["name"], step["description"], step["imagePath"], step["clickPosition"], actionType, step["waitTime"], subStepsSummary)
+        stepType := step.Has("stepType") ? step["stepType"] : "Step"
+        
+        ; Display different information based on step type
+        if (stepType = "Flow") {
+            targetFlow := step.Has("targetFlow") ? step["targetFlow"] : ""
+            displayInfo := "Flow: " targetFlow
+        } else {
+            displayInfo := step["imagePath"]
+        }
+        
+        myGui["StepsList"].Add(, i, step["name"], step["stepType"], step["clickType"], step["clickPosition"], actionType, step["waitTime"], subStepsSummary)
     }
 }
 
@@ -404,6 +456,12 @@ ClearStepDetailsFields() {
     
     ; Reset action type to click
     myGui["ActionTypeInput"].Choose(1)
+    
+    ; Reset step type to Step
+    myGui["StepTypeInput"].Choose(1)
+    
+    ; Clear target flow
+    myGui["TargetFlowInput"].Text := ""
     
     ; Clear sub steps
     global g_EditingSubSteps := []
@@ -516,6 +574,40 @@ SelectStep(*) {
                 if (type = actionType) {
                     myGui["ActionTypeInput"].Choose(i)
                     break
+                }
+            }
+        }
+        
+        ; Set step type and update UI
+        stepType := step.Has("stepType") ? step["stepType"] : "Step"
+        if (stepType = "Step") {
+            myGui["StepTypeInput"].Choose(1)
+        } else {
+            myGui["StepTypeInput"].Choose(2)
+        }
+        UpdateStepTypeUI()
+        
+        ; Set target flow if it exists
+        if (step.Has("targetFlow")) {
+            targetFlowName := step["targetFlow"]
+            ; Update the dropdown and find the matching item
+            UpdateTargetFlowDropdown()
+            ; Find the index of the target flow in the dropdown
+            dropdown := myGui["TargetFlowInput"]
+            ; Try to find the target flow in the dropdown and select it
+            try {
+                dropdown.Value := targetFlowName
+            } catch {
+                ; If direct assignment fails, try to find it by iterating
+                Loop 100 {  ; Use a reasonable limit
+                    try {
+                        if (dropdown[A_Index] = targetFlowName) {
+                            dropdown.Choose(A_Index)
+                            break
+                        }
+                    } catch {
+                        break  ; Exit if we've reached the end of the list
+                    }
                 }
             }
         }
@@ -717,6 +809,8 @@ RunStep(step, failCallback := "") {
     clickType := step.Has("clickType") ? step["clickType"] : "Image"
     clickX := step.Has("clickX") ? step["clickX"] : 0
     clickY := step.Has("clickY") ? step["clickY"] : 0
+    stepType := step.Has("stepType") ? step["stepType"] : "Step"
+    targetFlow := step.Has("targetFlow") ? step["targetFlow"] : ""
     OutputDebug("[RunStep] Executing step: " stepName)
     
     if (waitTime > 0) {
@@ -724,6 +818,85 @@ RunStep(step, failCallback := "") {
         Sleep waitTime
     }
 
+    ; Handle nested flow execution
+    if (stepType = "Flow") {
+        if (targetFlow = "") {
+            errMsg := "No target flow specified for nested flow step: " stepName
+            OutputDebug("[RunStep] " errMsg)
+            if (failCallback != "") {
+                failCallback(Map("message", errMsg))
+            } else {
+                MsgBox errMsg, "Run Error", "Icon!"
+            }
+            return false
+        }
+        
+        ; Check if target flow exists
+        if (!g_Flows.Has(targetFlow)) {
+            errMsg := "Target flow '" targetFlow "' not found for step: " stepName
+            OutputDebug("[RunStep] " errMsg)
+            if (failCallback != "") {
+                failCallback(Map("message", errMsg))
+            } else {
+                MsgBox errMsg, "Run Error", "Icon!"
+            }
+            return false
+        }
+        
+        ; Execute the nested flow
+        OutputDebug("[RunStep] Executing nested flow: " targetFlow)
+        nestedFlow := g_Flows[targetFlow]
+        
+        ; Initialize success flag and error tracking for nested flow
+        allNestedStepsSucceeded := true
+        failedNestedSteps := []
+        
+        ; Run each step in the nested flow
+        for i, nestedStep in nestedFlow {
+            OutputDebug("[RunStep] Running nested step " i "/" nestedFlow.Length ": " nestedStep["name"])
+            
+            ; Define a failure callback for detailed reporting
+            nestedStepFailureCallback(resultObj) {
+                OutputDebug("[RunStep] Nested step failed: " resultObj["message"])
+            }
+            
+            ; Run the nested step with error handling
+            if !RunStep(nestedStep, nestedStepFailureCallback) {
+                allNestedStepsSucceeded := false
+                failedNestedSteps.Push(Map("index", i, "name", nestedStep["name"]))
+                
+                ; Ask user if they want to continue after a failed nested step
+                if MsgBox("Nested step " i ": '" nestedStep["name"] "' failed in flow '" targetFlow "'. Continue with remaining steps?", 
+                         "Nested Step Failed", "YesNo Icon!") = "No" {
+                    break
+                }
+            }
+            
+            ; Small delay between nested steps for stability
+            Sleep 100
+        }
+        
+        ; Show completion message with results for nested flow
+        if (allNestedStepsSucceeded) {
+            OutputDebug("[RunStep] Nested flow completed successfully: " targetFlow)
+            return true
+        } else {
+            ; Build detailed failure message for nested flow
+            failMsg := "Nested flow '" targetFlow "' execution completed with errors. The following steps failed:`n`n"
+            for i, failedStep in failedNestedSteps {
+                failMsg .= "Step " failedStep["index"] ": " failedStep["name"] "`n"
+            }
+            
+            if (failCallback != "") {
+                failCallback(Map("message", failMsg))
+            } else {
+                MsgBox failMsg, "Nested Flow Completed With Errors", "Icon!"
+            }
+            return false
+        }
+    }
+
+    ; Handle regular step execution
     success := false
     if (clickType = "Image") {
         OutputDebug("[RunStep] Looking for image: " imagePath)
@@ -740,8 +913,15 @@ RunStep(step, failCallback := "") {
             if (actionType = "hover") {
                 MouseMove(clickX, clickY)
                 success := true
-            } else {
-                Click(clickX " " clickY)
+            } else if (actionType = "click") {
+                MouseMove(clickX, clickY)
+                Sleep 100
+                Click()
+                success := true
+            } else if (actionType = "doubleClick") {
+                MouseMove(clickX, clickY)
+                Sleep 100
+                Click("D")
                 success := true
             }
         } catch as err {
@@ -1002,4 +1182,71 @@ UpdateClickTypeUI(*) {
     myGui["XCoordInput"].Visible := clickType = "X & Y"
     myGui["YCoordLabel"].Visible := clickType = "X & Y"
     myGui["YCoordInput"].Visible := clickType = "X & Y"
+}
+
+; Updates the target flow dropdown with available flows
+UpdateTargetFlowDropdown() {
+    global g_Flows, g_CurrentFlowName
+    
+    ; Get the dropdown control
+    dropdown := myGui["TargetFlowInput"]
+    
+    ; Clear existing items
+    dropdown.Delete()
+    
+    ; Add available flows (excluding the current flow to prevent circular references)
+    for flowName, _ in g_Flows {
+        if (flowName != g_CurrentFlowName) {
+            dropdown.Add([flowName])
+        }
+    }
+    
+    ; Select the first item if available
+    if (dropdown.Value != "")
+        dropdown.Choose(1)
+}
+
+; Updates the UI based on the selected step type
+UpdateStepTypeUI(*) {
+    stepType := myGui["StepTypeInput"].Text
+    
+    ; Show/hide step-related controls
+    myGui["ClickTypeLabel"].Visible := stepType = "Step"
+    myGui["ClickTypeInput"].Visible := stepType = "Step"
+    myGui["ImagePathLabel"].Visible := stepType = "Step"
+    myGui["ImagePathInput"].Visible := stepType = "Step"
+    myGui["BrowseButton"].Visible := stepType = "Step"
+    myGui["ClickPositionLabel"].Visible := stepType = "Step"
+    myGui["ClickPositionInput"].Visible := stepType = "Step"
+    myGui["ActionTypeLabel"].Visible := stepType = "Step"
+    myGui["ActionTypeInput"].Visible := stepType = "Step"
+    myGui["XCoordLabel"].Visible := stepType = "Step"
+    myGui["XCoordInput"].Visible := stepType = "Step"
+    myGui["YCoordLabel"].Visible := stepType = "Step"
+    myGui["YCoordInput"].Visible := stepType = "Step"
+    myGui["ImagePreviewLabel"].Visible := stepType = "Step"
+    myGui["ImagePreview"].Visible := stepType = "Step"
+    myGui["SubStepsLabel"].Visible := stepType = "Step"
+    myGui["SubStepsList"].Visible := stepType = "Step"
+    myGui["SubStepTypeInput"].Visible := stepType = "Step"
+    myGui["SubStepValueInput"].Visible := stepType = "Step"
+    myGui["AddSubStepButton"].Visible := stepType = "Step"
+    myGui["RemoveSubStepButton"].Visible := stepType = "Step"
+    myGui["MoveSubStepUpButton"].Visible := stepType = "Step"
+    myGui["MoveSubStepDownButton"].Visible := stepType = "Step"
+    myGui["SubStepHelpText"].Visible := stepType = "Step"
+    
+    ; Show/hide flow-related controls
+    myGui["TargetFlowLabel"].Visible := stepType = "Flow"
+    myGui["TargetFlowInput"].Visible := stepType = "Flow"
+    
+    ; Update target flow dropdown when switching to step type "Flow"
+    if (stepType = "Flow") {
+        UpdateTargetFlowDropdown()
+    }
+    
+    ; Update click type UI if step type is "Step"
+    if (stepType = "Step") {
+        UpdateClickTypeUI()
+    }
 }

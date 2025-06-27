@@ -13,9 +13,10 @@ global g_DefaultSettings := Map(
     "CaptureDelay", 1000,         ; Default capture delay in milliseconds
     "ImageSearchAttempts", 3,     ; Number of attempts for image search before failing
     "AutoStart", false,           ; Auto-start on Windows login
-    "ShowNotifications", true,    ; Show notifications during workflow execution
-    "ConfirmRun", true,           ; Confirm before running workflows
-    "DefaultImageFolder", "images" ; Default folder for images
+    "ShowNotifications", true,    ; Show notifications during flow execution
+    "ConfirmRun", true,           ; Confirm before running flows
+    "DefaultImageFolder", "images", ; Default folder for images
+    "AutoCleanupImages", false    ; Auto-cleanup unused images on startup
 )
 
 ; Initialize settings from file or use defaults
@@ -99,4 +100,73 @@ ResetSettings() {
     g_Settings := g_DefaultSettings.Clone()
     ApplySettings()
     return SaveSettings()
+}
+
+; Cleanup unused images from the images folder
+; Parameters: none
+; Returns: Number of images deleted
+CleanupUnusedImages() {
+    global g_Flows, g_WorkingDir
+    
+    try {
+        imagesDir := CombinePath(g_WorkingDir, "images")
+        if !DirExist(imagesDir) {
+            OutputDebug("[CleanupUnusedImages] Images directory does not exist: " imagesDir)
+            return 0
+        }
+        
+        ; Collect all image paths used in flows
+        usedImages := Map()
+        
+        for flowName, flowSteps in g_Flows {
+            for step in flowSteps {
+                if (step.Has("imagePath") && step.imagePath != "") {
+                    ; Standardize the path for comparison
+                    standardPath := StandardizeImagePath(step.imagePath)
+                    if (standardPath != "") {
+                        usedImages[standardPath] := true
+                        OutputDebug("[CleanupUnusedImages] Found used image: " standardPath)
+                    }
+                }
+            }
+        }
+        
+        OutputDebug("[CleanupUnusedImages] Found " usedImages.Count " used images")
+        
+        ; Scan images directory for unused files
+        deletedCount := 0
+        imagesDir := StrReplace(imagesDir, "/", "\")  ; Convert to backslashes for Loop Files
+        
+        Loop Files imagesDir "\*.*" {
+            file := A_LoopFileFullPath
+            fileName := GetFileName(file)
+            
+            ; Skip non-image files
+            fileExt := GetFileExtension(file)
+            if (fileExt != ".png" && fileExt != ".jpg" && fileExt != ".jpeg" && fileExt != ".bmp" && fileExt != ".gif") {
+                continue
+            }
+            
+            ; Create standardized path for comparison
+            standardPath := StandardizeImagePath(CombinePath("images", fileName))
+            
+            ; Check if this image is used
+            if !usedImages.Has(standardPath) {
+                try {
+                    FileDelete(file)
+                    OutputDebug("[CleanupUnusedImages] Deleted unused image: " fileName)
+                    deletedCount++
+                } catch as err {
+                    OutputDebug("[CleanupUnusedImages] Failed to delete " fileName ": " err.Message)
+                }
+            }
+        }
+        
+        OutputDebug("[CleanupUnusedImages] Cleanup completed. Deleted " deletedCount " unused images")
+        return deletedCount
+        
+    } catch as err {
+        OutputDebug("[CleanupUnusedImages] Error during cleanup: " err.Message)
+        return 0
+    }
 } 
